@@ -1,0 +1,31 @@
+---
+- name: Create a VMware virtual machine
+  hosts: 10.4.11.10
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Create a new virtual machine
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        cluster: "{{ cluster_name }}"
+        name: "{{ vm_name }}"
+        template: "{{ template_name }}"
+        datacenter: "{{ datacenter_name }}"
+        folder: "{{ vm_folder }}"
+        disk:
+          - size_gb: 100
+            type: thin
+            datastore: "{{ datastore }}"
+        hardware:
+          num_cpus: 2
+          memory_mb: 4096
+        wait_for_ip_address: yes
+      register: vm_creation
+
+    - name: Display VM IP Address
+      debug:
+        msg: "VM IP address is {{ vm_creation.vm.ip_address }}"
+

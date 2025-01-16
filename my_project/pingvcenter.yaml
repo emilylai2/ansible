@@ -1,0 +1,8 @@
+---
+- name: Ping vCenter to check connectivity
+  hosts: 10.4.11.10  # 主機在 Inventory 中定義的名稱
+  gather_facts: no
+  tasks:
+    - name: Ping vCenter
+      ansible.builtin.ping:
+
