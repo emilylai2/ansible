@@ -1,0 +1,19 @@
+---
+- name: Create a VMware virtual machine
+  hosts: 10.4.11.10
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Gather all registered virtual machines
+      community.vmware.vmware_vm_info:
+        hostname: '{{ vcenter_hostname }}'
+        username: '{{ vcenter_username }}'
+        password: '{{ vcenter_password }}'
+        validate_certs: no
+      register: vm_info
+    - name: Display name of all VMs
+      debug:
+        #var: vm_info.virtual_machines
+        msg: "{{ item.guest_name }}"
+      loop: "{{ vm_info.virtual_machines }}"
+      when: item.guest_name is defined

@@ -1,0 +1,13 @@
+- name: Apply password complexity rules in pwquality.conf
+  ansible.builtin.lineinfile:
+    path: /etc/security/pwquality.conf
+    line: "{{ item }}"
+    create: yes
+  loop:
+    - "minlen = 12"
+    - "dcredit = -1"
+    - "ucredit = -1"
+    - "lcredit = -1"
+    - "ocredit = -1"
+  when: pwquality_settings.stdout == ""
+

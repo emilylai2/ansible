@@ -1,0 +1,63 @@
+- name: Check System Password Policy
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Detect OS type
+      ansible.builtin.command: cat /etc/os-release
+      register: os_type
+      changed_when: false
+
+    - name: Identify Distribution
+      ansible.builtin.set_fact:
+        is_ubuntu: "{{ 'ubuntu' in os_type.stdout | lower }}"
+        is_rhel: "{{ 'rhel' in os_type.stdout | lower or 'centos' in os_type.stdout | lower }}"
+
+    # ✅ 檢查密碼長度 & 複雜度
+    - name: Check pwquality.conf settings
+      ansible.builtin.shell: grep -E '^(minlen|dcredit|ucredit|ocredit)' /etc/security/pwquality.conf || true
+      register: pwquality_settings
+      changed_when: false
+      ignore_errors: true
+
+    # ✅ 檢查密碼到期時間
+    - name: Check password expiration settings
+      ansible.builtin.shell: grep '^PASS_MAX_DAYS' /etc/login.defs | awk '{print $NF}'
+      register: password_expiry
+      changed_when: false
+      ignore_errors: true
+
+    # ✅ 檢查登入失敗鎖定機制（Ubuntu/RHEL）
+    - name: Check pam_tally2 or pam_faillock settings
+      ansible.builtin.shell: grep -E 'pam_tally2|pam_faillock' /etc/pam.d/common-auth /etc/pam.d/system-auth || true
+      register: pam_lockout
+      changed_when: false
+      ignore_errors: true
+
+    # ✅ 檢查是否使用 SHA-512 加密（RHEL）
+    - name: Check password hashing algorithm (RHEL)
+      ansible.builtin.shell: authconfig --test | grep hashing || true
+      register: password_hashing
+      changed_when: false
+      ignore_errors: true
+      when: is_rhel
+
+    # ✅ 顯示檢查結果
+    - name: Debug password policy settings
+      ansible.builtin.debug:
+        msg:
+          - "🔍 **Operating System:** {{ 'Ubuntu' if is_ubuntu else 'RHEL/CentOS' if is_rhel else 'Unknown' }}"
+          - "🔍 **pwquality.conf settings (長度 & 複雜度):** {{ pwquality_settings.stdout_lines | default('Not Found') }}"
+          - "🔍 **Password Expiration (到期時間):** {{ password_expiry.stdout | default('Not Set') }}"
+          - "🔍 **Login Failure Lockout (登入失敗鎖定):** {{ pam_lockout.stdout | default('Not Configured') }}"
+          - "🔍 **Password Hashing Algorithm (RHEL only):** {{ password_hashing.stdout | default('Not Found') }}"
+
+    # ❌ 如果密碼策略未設定，則失敗
+    - name: Fail if password policy is not configured properly
+      ansible.builtin.fail:
+        msg: "❌ Password policy is NOT correctly configured!"
+      when:
+        - pwquality_settings.stdout == "" or pwquality_settings.stdout is not defined
+        - password_expiry.stdout == "" or password_expiry.stdout is not defined
+        - pam_lockout.stdout == "" or pam_lockout.stdout is not defined
+

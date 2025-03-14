@@ -1,0 +1,53 @@
+---
+- name: Create a VMware virtual machine from template
+  hosts: 10.4.11.10
+  gather_facts: no
+  connection: local  # 使用本地執行
+  vars:
+    vcenter_hostname: "10.4.11.10"
+    vcenter_username: "emilylai"
+    vcenter_password: "emilylai0"
+    datacenter_name: "Datacenter"
+    cluster_name: "Cluster"
+    datastore_name: "S210-Datastore"
+    vm_name: "new-vm"
+    template_name: "Emily_template"
+    num_cpus: 2
+    memory_mb: 4096
+    disk_size_gb: 20
+    iso_filename: "rhel-9.3-x86_64-dvd.iso"
+    iso_path: "[S210-Datastore/ISO/Red Hat] rhel-9.3-x86_64-dvd.iso"
+    network_name: "portgroup_14"
+    power_on: yes
+
+  tasks:
+    - name: Clone virtual machine from template
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        cluster: "{{ cluster_name }}"
+        name: "{{ vm_name }}"
+        template: "{{ template_name }}"
+        datacenter: "{{ datacenter_name }}"
+        datastore: "{{ datastore_name }}"
+        disk:
+          - size_gb: "{{ disk_size_gb }}"
+            type: thin
+        hardware:
+          num_cpus: "{{ num_cpus }}"
+          memory_mb: "{{ memory_mb }}"
+        cdrom:
+          type: iso
+          iso_path: "{{ iso_path }}"
+        networks:
+          - name: "{{ network_name }}"
+        power_on: "{{ power_on }}"
+        wait_for_ip_address: yes
+      register: vm_creation
+
+    - name: Display VM Creation Result
+      debug:
+        var: vm_creation
+

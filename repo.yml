@@ -1,0 +1,40 @@
+---
+- name: 配置 Red Hat 9.3 repository 並更新虛擬機
+  hosts: 10.4.14.88  # 替換為你的虛擬機主機名
+  gather_facts: yes
+  tasks:
+    - name: 配置 Red Hat 9.3 repository
+      ansible.builtin.yum_repository:
+        name: rhel-9-server-rpms  # repository 名稱
+        description: "Red Hat Enterprise Linux 9 Server Repository"
+        baseurl: file:///mnt/BaseOS
+        enabled: yes
+        gpgcheck: 0        
+    - name: 配置 Red Hat 9.3 AppStream repository
+      ansible.builtin.yum_repository:
+        name: rhel-9-server-appstream-rpms  # AppStream repository 名稱
+        description: "Red Hat Enterprise Linux 9 Server AppStream Repository"
+        baseurl: file:///mnt/AppStream
+        enabled: yes
+        gpgcheck: 0
+
+    - name: 更新所有軟體包
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+
+    - name: 清除 yum 快取
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+        update_cache: yes
+
+    - name: 確認 repository 是否已經配置正確
+      ansible.builtin.command:
+        cmd: yum repolist
+      register: result
+
+    - name: 顯示 repository 配置結果
+      debug:
+        var: result.stdout
+

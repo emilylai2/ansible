@@ -1,0 +1,120 @@
+- name: Ensure System Password Policy Compliance
+  hosts: all
+  become: true
+  tasks:
+
+    # 1️⃣ 確認 OS 類型（Ubuntu / RHEL）
+    - name: Detect OS type
+      ansible.builtin.command: cat /etc/os-release
+      register: os_type
+      changed_when: false
+
+    - name: Identify Distribution
+      ansible.builtin.set_fact:
+        is_ubuntu: "{{ 'ubuntu' in os_type.stdout | lower }}"
+        is_rhel: "{{ 'rhel' in os_type.stdout | lower or 'centos' in os_type.stdout | lower }}"
+
+    # 2️⃣ 確保 /etc/security/pwquality.conf 存在（密碼長度 & 複雜度）
+    - name: Ensure /etc/security/pwquality.conf exists
+      ansible.builtin.file:
+        path: /etc/security/pwquality.conf
+        state: touch
+        mode: '0644'
+
+    - name: Apply password complexity rules in pwquality.conf
+      ansible.builtin.lineinfile:
+        path: /etc/security/pwquality.conf
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - "minlen = 12"
+        - "dcredit = -1"
+        - "ucredit = -1"
+        - "lcredit = -1"
+        - "ocredit = -1"
+
+    # 3️⃣ 確保密碼到期時間不超過 90 天
+    - name: Check current password expiration setting
+      ansible.builtin.shell: grep '^PASS_MAX_DAYS' /etc/login.defs | awk '{print $NF}'
+      register: password_expiry
+      changed_when: false
+      ignore_errors: true
+
+    - name: Ensure password expiration is set to 90 days
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MAX_DAYS'
+        line: 'PASS_MAX_DAYS   90'
+      when: password_expiry.stdout | default('1000') | int > 90
+
+    # 4️⃣ 確保 PAM 啟用了登入失敗鎖定（防暴力破解）
+    - name: Check pam_faillock or pam_tally2 settings
+      ansible.builtin.shell: grep -E 'pam_tally2|pam_faillock' /etc/pam.d/common-auth /etc/pam.d/system-auth || true
+      register: pam_lockout
+      changed_when: false
+      ignore_errors: true
+
+    - name: Enable login failure lockout (for Ubuntu & RHEL)
+      ansible.builtin.lineinfile:
+        path: "{{ '/etc/pam.d/common-auth' if is_ubuntu else '/etc/pam.d/system-auth' }}"
+        line: "auth required pam_tally2.so deny=5 unlock_time=600"
+        create: yes
+      when: pam_lockout.stdout == ""
+
+    # 5️⃣ 檢查密碼雜湊演算法是否為 SHA-512
+    - name: Check password hashing algorithm
+      ansible.builtin.shell: |
+        if [ -f /etc/login.defs ]; then
+          grep '^ENCRYPT_METHOD' /etc/login.defs | awk '{print $NF}'
+        elif command -v authconfig >/dev/null 2>&1; then
+          authconfig --test | grep hashing | awk '{print $NF}'
+        elif command -v authselect >/dev/null 2>&1; then
+          authselect current | grep sha512 && echo "sha512"
+        else
+          echo "Unknown"
+        fi
+      register: password_hashing
+      changed_when: false
+      ignore_errors: true
+
+    - name: Debug password hashing output
+      ansible.builtin.debug:
+        msg: "🔍 **Password Hashing Algorithm:** {{ password_hashing.stdout | default('Not Found') }}"
+
+    - name: Ensure SHA-512 hashing is enabled
+      ansible.builtin.shell: |
+        if command -v authconfig >/dev/null 2>&1; then
+          authconfig --passalgo=sha512 --update
+        elif command -v authselect >/dev/null 2>&1; then
+          authselect select sssd with-sha512 --force
+        else
+          echo "No supported command found"
+        fi
+      when: password_hashing.stdout | string != "SHA512"
+      ignore_errors: true
+
+    - name: Ensure SHA-512 is set in /etc/login.defs
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: '^ENCRYPT_METHOD'
+        line: 'ENCRYPT_METHOD SHA512'
+        create: yes
+
+    # 6️⃣ 最終確認 & Debug 訊息
+    - name: Debug password policy settings
+      ansible.builtin.debug:
+        msg:
+          - "🔍 **Operating System:** {{ 'Ubuntu' if is_ubuntu else 'RHEL/CentOS' if is_rhel else 'Unknown' }}"
+          - "🔍 **pwquality.conf settings (長度 & 複雜度):** minlen = 12, dcredit = -1, ucredit = -1, ocredit = -1"
+          - "🔍 **Password Expiration (到期時間):** {{ password_expiry.stdout | default('Unknown') }}"
+          - "🔍 **Login Failure Lockout:** {{ 'Enabled' if pam_lockout.stdout != '' else 'Not Configured' }}"
+          - "🔍 **Password Hashing Algorithm:** {{ password_hashing.stdout | default('Not Found') }}"
+
+    # 7️⃣ 如果檢查不通過，則讓 Playbook 失敗
+    - name: Fail if password policy is not correctly configured
+      ansible.builtin.fail:
+        msg: "❌ Password policy is NOT correctly configured!"
+      when:
+        - password_expiry.stdout | default('1000') | int > 90
+        - pam_lockout.stdout is not defined or pam_lockout.stdout == ""
+

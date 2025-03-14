@@ -1,0 +1,16 @@
+- name: Power on a virtual machine in vCenter
+  hosts: 10.4.11.10
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Power on VM
+      community.vmware.vmware_guest_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        name: "Emily-Rocky9"
+        folder: "{{ vm_folder }}"
+        datacenter: "{{ datacenter_name }}"
+        state: powered-on
+        

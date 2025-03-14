@@ -1,0 +1,61 @@
+- name: Ensure Password Policy Compliance (Ubuntu & RHEL)
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Detect OS type
+      ansible.builtin.command: cat /etc/os-release
+      register: os_type
+      changed_when: false
+
+    - name: Identify Distribution
+      ansible.builtin.set_fact:
+        is_ubuntu: "{{ 'ubuntu' in os_type.stdout | lower }}"
+        is_rhel: "{{ 'rhel' in os_type.stdout | lower or 'centos' in os_type.stdout | lower }}"
+
+    - name: Check if libpam-pwquality is installed (Ubuntu)
+      ansible.builtin.shell: dpkg -l | grep 'libpam-pwquality' || true
+      register: pam_pwquality_installed
+      changed_when: false
+      failed_when: false
+      when: is_ubuntu
+
+    - name: Install libpam-pwquality if missing (Ubuntu)
+      ansible.builtin.apt:
+        name: libpam-pwquality
+        state: present
+      when: is_ubuntu and pam_pwquality_installed.stdout == ""
+
+    - name: Check if common-password exists (Ubuntu only)
+      ansible.builtin.stat:
+        path: /etc/pam.d/common-password
+      register: common_password_file
+      when: is_ubuntu
+
+    - name: Check if pam_pwquality.so is enabled (Ubuntu)
+      ansible.builtin.shell: grep 'pam_pwquality.so' /etc/pam.d/common-password || true
+      register: pam_pwquality_enabled
+      changed_when: false
+      ignore_errors: true
+      when: is_ubuntu and common_password_file.stat.exists
+
+    - name: Ensure pam_pwquality.so is configured in common-password (Ubuntu)
+      ansible.builtin.lineinfile:
+        path: /etc/pam.d/common-password
+        line: "password requisite pam_pwquality.so retry=3 minlen=12 difok=3"
+        insertafter: EOF
+      when: is_ubuntu and pam_pwquality_enabled.stdout == ""
+
+    - name: Restart PAM services (Ubuntu)
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+      when: is_ubuntu
+
+    - name: Debug password policy settings
+      ansible.builtin.debug:
+        msg:
+          - "🔍 **Operating System:** {{ 'Ubuntu' if is_ubuntu else 'RHEL/CentOS' if is_rhel else 'Unknown' }}"
+          - "🔍 **libpam-pwquality installed (Ubuntu only):** {{ 'Yes' if pam_pwquality_installed.stdout != '' else 'No' }}"
+          - "🔍 **pam_pwquality.so enabled in common-password (Ubuntu only):** {{ 'Yes' if pam_pwquality_enabled.stdout != '' else 'No' }}"
+

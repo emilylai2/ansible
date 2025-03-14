@@ -1,0 +1,29 @@
+---
+- name: Create a VMware virtual machine
+  hosts: 10.4.11.10
+  connection: local
+  gather_facts: no
+  vars_files:
+    - secret.yaml
+  tasks:
+    - name: Create a new virtual machine
+      community.vmware.vmware_guest:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: no
+        cluster: "{{ cluster_name }}"
+        name: "{{ vm_name }}"
+        template: "{{ template_name }}"
+        datacenter: "{{ datacenter_name }}"
+        folder: "{{ vm_folder }}"
+        disk:
+          - size_gb: 200
+            type: thin
+            datastore: "{{ datastore_name }}"
+        hardware:
+          num_cpus: 2
+          memory_mb: 4096
+      register: vm_creation
+
+
